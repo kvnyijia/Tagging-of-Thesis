@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
-# without num_layer, threshold=0.3, Best F1 score  [0.6933665008291874, 55]
-# with num_layer=2, [0.6959298992711491, 44]
+
+# In[ ]:
+
 
 import pandas as pd
 import numpy as np
@@ -72,9 +73,9 @@ def write_config(filename, with_time=False):
 embedding_dim = 100
 hidden_dim = 512
 learning_rate = 1e-4
-max_epoch = 50
+max_epoch = 10
 batch_size = 16
-num_layers = 2
+
 # write the hyperparameters into config.ini
 #write_config(os.path.join(CWD,"config"))
 
@@ -108,14 +109,9 @@ dataset.drop('Created Date',axis=1, inplace=True)
 dataset.drop('Authors',axis=1,inplace=True)
 dataset['Abstract'] = dataset['Abstract'].str.lower()
 #dataset['Task 1'] = dataset['Task 1'].str.lower()
-from nltk.stem import WordNetLemmatizer 
-lemmatizer = WordNetLemmatizer()
 
 for i in range(len(dataset['Abstract'])):
-    dataset['Abstract'][i] = lemmatizer.lemmatize(dataset['Abstract'][i])
-
-#for i in range(len(dataset['Abstract'])):
-#    dataset['Abstract'][i] = remove_stopwords(dataset['Abstract'][i])
+    dataset['Abstract'][i] = remove_stopwords(dataset['Abstract'][i])
 
 
 # In[ ]:
@@ -147,10 +143,7 @@ dataset.drop('Authors',axis=1,inplace=True)
 dataset['Abstract'] = dataset['Abstract'].str.lower()
 
 for i in range(len(dataset['Abstract'])):
-    dataset['Abstract'][i] = lemmatizer.lemmatize(dataset['Abstract'][i])
-
-#for i in range(len(dataset['Abstract'])):
-#    dataset['Abstract'][i] = remove_stopwords(dataset['Abstract'][i])
+    dataset['Abstract'][i] = remove_stopwords(dataset['Abstract'][i])
 
 dataset.to_csv(os.path.join(CWD,'data/testset.csv'),index=False)
 
@@ -527,6 +520,14 @@ trainData = AbstractDataset(train, PAD_TOKEN, max_len = 64)
 validData = AbstractDataset(valid, PAD_TOKEN, max_len = 64)
 testData = AbstractDataset(test, PAD_TOKEN, max_len = 64)
 
+print('type of trainData', type(trainData), '\n')
+print('type of validData', type(validData), '\n')
+print('type of testData', type(testData), '\n')
+
+
+# In[ ]:
+
+
 class Net(nn.Module):
     def __init__(self, vocabulary_size): # vocabulary_size is the lenght of word_dict
         super(Net, self).__init__()
@@ -542,7 +543,6 @@ class Net(nn.Module):
         self.sent_rnn = nn.GRU(self.embedding_size,
                                 self.hidden_dim,
                                 bidirectional=True,
-                                num_layers = num_layers,
                                 batch_first=True)
         
         self.l1 = nn.Linear(self.hidden_dim*2, self.hidden_dim)
@@ -614,10 +614,10 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 ### Helper functions for scoring
-threshold=0.3
+
 class F1():
     def __init__(self):
-        self.threshold = threshold
+        self.threshold = 0.5
         self.n_precision = 0
         self.n_recall = 0
         self.n_corrects = 0
@@ -705,10 +705,10 @@ def _run_iter(x,y):
     return o_labels, l_loss
 
 def save(epoch):
-    if not os.path.exists(os.path.join(CWD,'model_sample_code')):
-        os.makedirs(os.path.join(CWD,'model_sample_code'))
-    torch.save(model.state_dict(), os.path.join( CWD,'model_sample_code/model.pkl.'+str(epoch) ))
-    with open( os.path.join( CWD,'model_sample_code/history.json'), 'w') as f:
+    if not os.path.exists(os.path.join(CWD,'model')):
+        os.makedirs(os.path.join(CWD,'model'))
+    torch.save(model.state_dict(), os.path.join( CWD,'model/model.pkl.'+str(epoch) ))
+    with open( os.path.join( CWD,'model/history.json'), 'w') as f:
         json.dump(history, f, indent=4)
 
 
@@ -736,7 +736,7 @@ for epoch in range(max_epoch):
     save(epoch)
 
 # Plot the training results 
-with open(os.path.join(CWD,'model_sample_code/history.json'), 'r') as f:
+with open(os.path.join(CWD,'model/history.json'), 'r') as f:
     history = json.loads(f.read())
     
 train_loss = [l['loss'] for l in history['train']]
@@ -750,7 +750,7 @@ plt.plot(train_loss, label='train')
 plt.plot(valid_loss, label='valid')
 plt.legend()
 plt.show()
-plt.savefig("Loss_sample_code.png")
+plt.savefig("Loss.png")
 
 plt.figure(figsize=(7,5))
 plt.title('F1 Score')
@@ -758,10 +758,8 @@ plt.plot(train_f1, label='train')
 plt.plot(valid_f1, label='valid')
 plt.legend()
 plt.show()
-plt.savefig("F1_score_sample_code.png")
+plt.savefig("F1_score.png")
 
-best_score, best_epoch=max([[l['f1'], idx] for idx, l in enumerate(history['valid'])])
-print('best_score= ', best_score, ', best_epoch= ', best_epoch, '\n')
 print('Best F1 score ', max([[l['f1'], idx] for idx, l in enumerate(history['valid'])]))
 
 
@@ -771,15 +769,15 @@ print('Best F1 score ', max([[l['f1'], idx] for idx, l in enumerate(history['val
 # This is the Prediction cell.
 
 # fill the epoch of the lowest val_loss to best_model
-best_model = best_epoch
-model.load_state_dict(state_dict=torch.load(os.path.join(CWD,'model_sample_code/model.pkl.{}'.format(best_model))))
+best_model = 9
+model.load_state_dict(state_dict=torch.load(os.path.join(CWD,'model/model.pkl.{}'.format(best_model))))
 model.train(False)
 # double ckeck the best_model_score
 _run_epoch(1, 'valid')
 
 # start testing
 dataloader = DataLoader(dataset=testData,
-                            batch_size=batch_size,
+                            batch_size=64,
                             shuffle=False,
                             collate_fn=testData.collate_fn,
                             num_workers=8)
@@ -787,7 +785,7 @@ trange = tqdm(enumerate(dataloader), total=len(dataloader), desc='Predict')
 prediction = []
 for i, (x, y, sent_len) in trange:
     o_labels = model(x.to(device))
-    o_labels = o_labels>threshold
+    o_labels = o_labels>0.5
     for idx, o_label in enumerate(o_labels):
         prediction.append(o_label[:sent_len[idx]].to('cpu'))
 prediction = torch.cat(prediction).detach().numpy().astype(int)
@@ -829,7 +827,7 @@ def SubmitGenerator(prediction, sampleFile, public=True, filename='prediction.cs
 SubmitGenerator(prediction,
                 os.path.join(CWD,'data/task1_sample_submission.csv'), 
                 True, 
-                os.path.join(CWD,'submission_sample_code.csv'))
+                os.path.join(CWD,'submission_1106.csv'))
 
 
 # In[ ]:
